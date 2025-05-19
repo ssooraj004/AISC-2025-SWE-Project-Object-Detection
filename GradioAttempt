@@ -1,0 +1,52 @@
+# === Install Gradio + Text-to-Speech ===
+!pip install -q gradio pyttsx3
+!apt-get install -y espeak libespeak1
+
+import gradio as gr
+import pyttsx3
+import tempfile
+from PIL import Image
+import torch
+
+model = torch.hub.load('ultralytics/yolov5', 'yolov5l', pretrained=True)
+
+# === Initialize pyttsx3 ===
+engine = pyttsx3.init()
+engine.setProperty('rate', 150)
+
+# === Function for Gradio: Detect objects + return text + audio ===
+def detect_and_speak(image):
+    # Convert PIL to OpenCV format
+    image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    h, w, _ = image_cv.shape
+
+    # Run detection
+    results = model(image_cv)
+    detections = results.xyxy[0]  # tensor format
+
+    if detections.shape[0] == 0:
+        description = "No objects detected."
+    else:
+        class_ids = detections[:, -1].int().tolist()
+        detected_labels = [model.names[i] for i in class_ids]
+        unique_labels = list(set(detected_labels))
+        description = "Detected: " + ", ".join(unique_labels)
+
+    # Text-to-speech audio output
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as fp:
+        engine.save_to_file(description, fp.name)
+        engine.runAndWait()
+        audio_path = fp.name
+
+    return description, audio_path
+
+# === Launch Gradio Interface ===
+gr.Interface(
+    fn=detect_and_speak,
+    inputs=gr.Image(type="pil"),
+    outputs=[
+        gr.Textbox(label="Detected Objects"),
+        gr.Audio(label="Audio Feedback", type="filepath")
+    ],
+    title="YOLOv5 Object Detection with Audio Feedback"
+).launch(share=True)
